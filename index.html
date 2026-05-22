@@ -788,6 +788,22 @@ body::after {
         </div>
       </div>
 
+      <!-- MCQ Per Page -->
+      <div class="settings-section">
+        <div class="settings-sec-title"><i class="fas fa-table-list" style="color:var(--a)"></i> Pagination</div>
+        <div class="settings-row" style="flex-direction:column;align-items:flex-start;gap:8px">
+          <div class="settings-row-label">
+            MCQ per Page
+            <div class="settings-row-sub">Number of questions shown per page (5–500).</div>
+          </div>
+          <div style="display:flex;gap:8px;width:100%;align-items:center">
+            <input class="form-input" id="per-page-input" type="number" min="5" max="500" placeholder="50" style="flex:1;max-width:100px">
+            <button class="btn btn-primary btn-sm" onclick="savePerPage()"><i class="fas fa-check"></i> Save</button>
+            <span style="font-size:.74rem;color:var(--t3)">Current: <span id="per-page-display" style="color:var(--a);font-weight:700"></span></span>
+          </div>
+        </div>
+      </div>
+
       <!-- Loaded exams -->
       <div class="settings-section">
         <div class="settings-sec-title"><i class="fas fa-layer-group" style="color:var(--a)"></i> Loaded Exams</div>
@@ -833,11 +849,12 @@ if ('serviceWorker' in navigator) {
 ══════════════════════════════════ -->
 <script>
 /* ════════════════ CONSTANTS & STATE ════════════════ */
-const META_KEY  = '__sh_meta__';
-const META_NAME = '__sh_appname__';
+const META_KEY       = '__sh_meta__';
+const META_NAME      = '__sh_appname__';
+const META_PER_PAGE  = '__sh_perpage__';
 const DEFAULT_APP_NAME = 'StudyHub';
 const DEFAULT_PREFIX   = 'sh';
-const PER_PAGE = 50;
+let PER_PAGE = parseInt(localStorage.getItem(META_PER_PAGE), 10) || 50;
 
 let APP_PREFIX = localStorage.getItem(META_KEY) || DEFAULT_PREFIX;
 let APP_NAME   = localStorage.getItem(META_NAME) || DEFAULT_APP_NAME;
@@ -1351,6 +1368,8 @@ function openSettings() {
   document.getElementById('prefix-input').value   = APP_PREFIX;
   document.getElementById('prefix-display').textContent = APP_PREFIX;
   document.getElementById('app-name-input').value = APP_NAME;
+  document.getElementById('per-page-input').value = PER_PAGE;
+  document.getElementById('per-page-display').textContent = PER_PAGE;
   buildSettingsExamsList();
   document.getElementById('settings-overlay').classList.add('open');
 }
@@ -1373,6 +1392,17 @@ function savePrefix() {
   APP_PREFIX = val;
   document.getElementById('prefix-display').textContent = APP_PREFIX;
   showToast('<i class="fas fa-check"></i> Prefix saved — reload to apply');
+}
+
+function savePerPage() {
+  const val = parseInt(document.getElementById('per-page-input').value, 10);
+  if (isNaN(val) || val < 5 || val > 500) { showToast('Enter a number between 5 and 500'); return; }
+  if (val === PER_PAGE) { showToast('No change'); return; }
+  PER_PAGE = val;
+  localStorage.setItem(META_PER_PAGE, val);
+  document.getElementById('per-page-display').textContent = PER_PAGE;
+  if (currentExamKey) { currentPage = 1; renderPage(1); }
+  showToast(`<i class="fas fa-check"></i> MCQ per page set to ${PER_PAGE}`);
 }
 
 function buildSettingsExamsList() {
@@ -1443,6 +1473,7 @@ function nukeEverything() {
   // Also remove meta keys
   localStorage.removeItem(META_KEY);
   localStorage.removeItem(META_NAME);
+  localStorage.removeItem(META_PER_PAGE);
   showToast('<i class="fas fa-bomb"></i> All data wiped. Reloading...');
   setTimeout(() => location.reload(), 1200);
 }

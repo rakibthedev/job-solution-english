@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#080a10">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -557,7 +557,44 @@ body::after {
 }
 .danger-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 
-/* ═══ TOAST ═══ */
+/* ═══ UPLOAD LOADING OVERLAY ═══ */
+.upload-loading {
+  position: absolute; inset: 0; z-index: 10;
+  background: rgba(8,10,16,.82);
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  border-radius: var(--r);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  opacity: 0; visibility: hidden; transition: opacity .2s, visibility .2s;
+}
+.upload-loading.show { opacity: 1; visibility: visible; }
+.upload-loading .ul-ring {
+  width: 36px; height: 36px; border-radius: 50%;
+  border: 2.5px solid var(--b2);
+  border-top-color: var(--a); border-right-color: var(--a2);
+  animation: spin .7s linear infinite;
+}
+.upload-loading .ul-msg { font-size: .8rem; color: var(--t2); font-weight: 500; }
+
+/* ═══ FILTER ACTION BAR ═══ */
+.filter-action-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 12px; border-radius: var(--r-sm);
+  border: 1px solid var(--b2); background: var(--s2);
+  margin-bottom: 10px; font-size: .8rem; color: var(--t2);
+}
+.filter-action-bar.fav-bar   { border-color: var(--amber); background: var(--amber-s); color: var(--amber); }
+.filter-action-bar.wrong-bar { border-color: var(--red);   background: var(--red-s);   color: var(--red);   }
+.filter-action-bar.right-bar { border-color: var(--green); background: var(--green-s); color: var(--green); }
+.filter-action-bar i { font-size: .85rem; }
+.filter-action-bar span { flex: 1; font-weight: 600; }
+.filter-action-bar .fa-btn {
+  height: 28px; padding: 0 10px; border-radius: var(--r-pill);
+  font-family: var(--ff-body); font-size: .74rem; font-weight: 600;
+  cursor: pointer; transition: var(--tr); border: 1px solid currentColor;
+  background: transparent; color: inherit; display: flex; align-items: center; gap: 5px;
+}
+.filter-action-bar .fa-btn:hover { opacity: .75; }
+
 #toast {
   position: fixed; bottom: calc(var(--stat-h) + 10px + var(--safe-bot)); left: 50%;
   transform: translateX(-50%) translateY(16px);
@@ -680,11 +717,15 @@ body::after {
      ADD EXAM MODAL
 ══════════════════════════════════ -->
 <div class="overlay" id="add-overlay">
-  <div class="modal" id="add-modal">
+  <div class="modal" id="add-modal" style="position:relative">
     <div class="modal-header">
       <div class="modal-icon"><i class="fas fa-file-import"></i></div>
       <div class="modal-title">Add Exam Set</div>
       <div class="modal-close" onclick="closeAddModal()"><i class="fas fa-xmark"></i></div>
+    </div>
+    <div class="upload-loading" id="upload-loading">
+      <div class="ul-ring"></div>
+      <div class="ul-msg" id="upload-loading-msg">Processing…</div>
     </div>
     <div class="modal-body">
             <div class="json-error-box" id="add-error">
@@ -788,22 +829,6 @@ body::after {
         </div>
       </div>
 
-      <!-- MCQ Per Page -->
-      <div class="settings-section">
-        <div class="settings-sec-title"><i class="fas fa-table-list" style="color:var(--a)"></i> Pagination</div>
-        <div class="settings-row" style="flex-direction:column;align-items:flex-start;gap:8px">
-          <div class="settings-row-label">
-            MCQ per Page
-            <div class="settings-row-sub">Number of questions shown per page (5–500).</div>
-          </div>
-          <div style="display:flex;gap:8px;width:100%;align-items:center">
-            <input class="form-input" id="per-page-input" type="number" min="5" max="500" placeholder="50" style="flex:1;max-width:100px">
-            <button class="btn btn-primary btn-sm" onclick="savePerPage()"><i class="fas fa-check"></i> Save</button>
-            <span style="font-size:.74rem;color:var(--t3)">Current: <span id="per-page-display" style="color:var(--a);font-weight:700"></span></span>
-          </div>
-        </div>
-      </div>
-
       <!-- Loaded exams -->
       <div class="settings-section">
         <div class="settings-sec-title"><i class="fas fa-layer-group" style="color:var(--a)"></i> Loaded Exams</div>
@@ -849,12 +874,11 @@ if ('serviceWorker' in navigator) {
 ══════════════════════════════════ -->
 <script>
 /* ════════════════ CONSTANTS & STATE ════════════════ */
-const META_KEY       = '__sh_meta__';
-const META_NAME      = '__sh_appname__';
-const META_PER_PAGE  = '__sh_perpage__';
+const META_KEY  = '__sh_meta__';
+const META_NAME = '__sh_appname__';
 const DEFAULT_APP_NAME = 'StudyHub';
 const DEFAULT_PREFIX   = 'sh';
-let PER_PAGE = parseInt(localStorage.getItem(META_PER_PAGE), 10) || 50;
+const PER_PAGE = 50;
 
 let APP_PREFIX = localStorage.getItem(META_KEY) || DEFAULT_PREFIX;
 let APP_NAME   = localStorage.getItem(META_NAME) || DEFAULT_APP_NAME;
@@ -1044,6 +1068,7 @@ function renderPage(page) {
       <p>Try a different filter or answer some questions first.</p>
     </div>`;
     document.getElementById('pagination').innerHTML = '';
+    document.getElementById('filter-action-bar').innerHTML = '';
     return;
   }
 
@@ -1055,6 +1080,9 @@ function renderPage(page) {
   const pageQs = filtered.slice(start, end);
   const favs   = getFavs();
   const isRead = currentMode === 'read';
+
+  // ── Filter action bar ──
+  buildFilterActionBar(pageQs, filtered);
 
   pageQs.forEach((q, idx) => {
     const card    = document.createElement('div');
@@ -1073,7 +1101,7 @@ function renderPage(page) {
         </div>
       </div>
       <div class="q-opts" id="opts-${idx}"></div>
-      ${isRead ? `<div class="read-answer"><i class="fas fa-key"></i> Answer: <strong>${q.answer.toUpperCase()}</strong></div>` : ''}
+      
     `;
 
     card.querySelector('.q-fav').addEventListener('click', e => {
@@ -1130,6 +1158,75 @@ function renderPage(page) {
   updateCopyIdsBtn();
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (window.MathJax) MathJax.typesetPromise && MathJax.typesetPromise([wrap]).catch(() => {});
+}
+
+/* ════════ FILTER ACTION BAR ════════ */
+function buildFilterActionBar(pageQs, allFiltered) {
+  let bar = document.getElementById('filter-action-bar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'filter-action-bar';
+    const wrap = document.getElementById('questions-wrap');
+    wrap.parentNode.insertBefore(bar, wrap);
+  }
+  bar.innerHTML = '';
+
+  if (currentFilter === 'all') return;
+
+  const cfg = {
+    fav:   { cls: 'fav-bar',   icon: 'fa-heart',        label: `${pageQs.length} saved on this page`,  del: 'Remove favs on this page',   delAll: 'Remove ALL saved' },
+    wrong: { cls: 'wrong-bar', icon: 'fa-circle-xmark', label: `${pageQs.length} wrong on this page`,  del: 'Clear wrong on this page',   delAll: 'Clear ALL wrong'  },
+    right: { cls: 'right-bar', icon: 'fa-circle-check', label: `${pageQs.length} correct on this page`,del: 'Clear correct on this page',  delAll: 'Clear ALL correct'},
+  };
+  const c = cfg[currentFilter];
+  if (!c) return;
+
+  bar.className = `filter-action-bar ${c.cls}`;
+
+  const icon = document.createElement('i');
+  icon.className = `fas ${c.icon}`;
+  bar.appendChild(icon);
+
+  const lbl = document.createElement('span');
+  lbl.textContent = c.label;
+  bar.appendChild(lbl);
+
+  // Delete this page
+  const btnPage = document.createElement('button');
+  btnPage.className = 'fa-btn';
+  btnPage.innerHTML = `<i class="fas fa-eraser"></i> ${c.del}`;
+  btnPage.addEventListener('click', () => deleteFilteredOnPage(pageQs, false, c.del));
+  bar.appendChild(btnPage);
+
+  // Delete all (all pages)
+  const btnAll = document.createElement('button');
+  btnAll.className = 'fa-btn';
+  btnAll.innerHTML = `<i class="fas fa-trash"></i> ${c.delAll}`;
+  btnAll.addEventListener('click', () => deleteFilteredOnPage(allFiltered, true, c.delAll));
+  bar.appendChild(btnAll);
+}
+
+function deleteFilteredOnPage(questions, isAll, actionLabel) {
+  const count = questions.length;
+  if (!count) { showToast('Nothing to delete'); return; }
+  const scope = isAll ? 'ALL pages' : 'this page only';
+  if (!confirm(`${actionLabel}\n\nThis will affect ${count} question(s) on ${scope}.\n\nContinue?`)) return;
+
+  if (currentFilter === 'fav') {
+    let favs = getFavs();
+    const ids = new Set(questions.map(q => q.q_id || q.label));
+    favs = favs.filter(f => !ids.has(f));
+    saveFavs(favs);
+  } else {
+    // Clear selected answers for wrong/right
+    questions.forEach(q => { q.selected = null; });
+    saveProgress();
+  }
+
+  if (isAll) { currentPage = 1; currentFilter = 'all'; }
+  updateStats();
+  renderPage(currentPage);
+  showToast(`<i class="fas fa-check"></i> Done — ${count} item(s) cleared`);
 }
 
 function getFiltered() {
@@ -1267,26 +1364,56 @@ function setupDropZone() {
   inp.addEventListener('change', () => { if (inp.files[0]) processFile(inp.files[0]); });
 }
 
+/* ════════ UPLOAD LOADING ════════ */
+function showUploadLoading(msg) {
+  const el = document.getElementById('upload-loading');
+  document.getElementById('upload-loading-msg').textContent = msg || 'Processing…';
+  el.classList.add('show');
+}
+function hideUploadLoading() {
+  document.getElementById('upload-loading').classList.remove('show');
+}
+
 function processFile(file) {
   if (!file.name.toLowerCase().endsWith('.json')) {
     showJsonError('Only .json files are accepted.', null);
     return;
   }
+
+  // Warn for very large files (> 30 MB) but still allow
+  const MB = file.size / (1024 * 1024);
+  const msg = MB > 10
+    ? `Reading file… (${MB.toFixed(1)} MB, may take a moment)`
+    : 'Reading file…';
+  showUploadLoading(msg);
+
+  // Use setTimeout so the spinner renders before blocking parse
   const reader = new FileReader();
   reader.onload = e => {
-    try {
-      const parsed = JSON.parse(e.target.result);
-      window._pendingJson = parsed;
-      document.getElementById('add-error').style.display = 'none';
-      const ok = document.getElementById('drop-ok');
-      ok.classList.remove('hidden');
-      document.getElementById('drop-fname').textContent = file.name;
-      if (!document.getElementById('add-name').value)
-        document.getElementById('add-name').value = file.name.replace(/\.json$/i,'').replace(/_/g,' ');
-    } catch (err) {
-      showJsonError('Could not parse file: ' + err.message, null);
-      window._pendingJson = null;
-    }
+    // Yield to paint, then parse
+    setTimeout(() => {
+      try {
+        const parsed = JSON.parse(e.target.result);
+        window._pendingJson = parsed;
+        document.getElementById('add-error').style.display = 'none';
+        const ok = document.getElementById('drop-ok');
+        ok.classList.remove('hidden');
+        document.getElementById('drop-fname').textContent =
+          `${file.name}  (${Array.isArray(parsed) ? parsed.length + ' items' : 'loaded'})`;
+        if (!document.getElementById('add-name').value)
+          document.getElementById('add-name').value =
+            file.name.replace(/\.json$/i,'').replace(/_/g,' ');
+      } catch (err) {
+        showJsonError('Could not parse file: ' + err.message, null);
+        window._pendingJson = null;
+      } finally {
+        hideUploadLoading();
+      }
+    }, 30);
+  };
+  reader.onerror = () => {
+    hideUploadLoading();
+    showJsonError('File read error — try again.', null);
   };
   reader.readAsText(file);
 }
@@ -1308,33 +1435,55 @@ function submitAddExam() {
   if (window._pendingJson) {
     rawQs = window._pendingJson;
   } else if (jsonCode) {
-    try { rawQs = JSON.parse(jsonCode); }
-    catch (e) { showJsonError('JSON parse error: ' + e.message); return; }
+    showUploadLoading('Parsing JSON…');
+    setTimeout(() => {
+      try {
+        rawQs = JSON.parse(jsonCode);
+        _finishAddExam(name, hdrsRaw, rawQs);
+      } catch (e) {
+        hideUploadLoading();
+        showJsonError('JSON parse error: ' + e.message);
+      }
+    }, 30);
+    return;
   } else {
     showJsonError('Please upload a .json file or paste JSON code.'); return;
   }
 
-  if (!Array.isArray(rawQs)) { showJsonError('JSON must be an array [ ... ].'); return; }
+  showUploadLoading('Importing questions…');
+  setTimeout(() => _finishAddExam(name, hdrsRaw, rawQs), 30);
+}
 
-  const questions = rawQs.filter(item => item.label && item.options && item.answer);
-  if (questions.length === 0) {
-    showJsonError('No valid questions found in this JSON.');
-    return;
+function _finishAddExam(name, hdrsRaw, rawQs) {
+  try {
+    if (!Array.isArray(rawQs)) { hideUploadLoading(); showJsonError('JSON must be an array [ ... ].'); return; }
+
+    const questions = rawQs.filter(item => item.label && item.options && item.answer);
+    if (questions.length === 0) {
+      hideUploadLoading();
+      showJsonError('No valid questions found in this JSON.');
+      return;
+    }
+    questions.forEach(q => q.selected = null);
+
+    const hdrsRawTrimmed = hdrsRaw || '';
+    const headers = hdrsRawTrimmed ? hdrsRawTrimmed.split(',').map(h => h.trim()).filter(Boolean) : [name];
+    const key     = 'exam_' + Date.now();
+    ls_s(`exam_${key}`, { header: headers, questions });
+
+    const reg = getRegistry();
+    reg[key] = { name, headers, questionCount: questions.length };
+    saveRegistry(reg);
+
+    hideUploadLoading();
+    closeAddModal();
+    buildTabs();
+    loadExam(key);
+    showToast(`<i class="fas fa-circle-check"></i> "${name}" added — ${questions.length} questions`);
+  } catch(err) {
+    hideUploadLoading();
+    showJsonError('Import error: ' + err.message);
   }
-  questions.forEach(q => q.selected = null);
-
-  const headers = hdrsRaw ? hdrsRaw.split(',').map(h => h.trim()).filter(Boolean) : [name];
-  const key     = 'exam_' + Date.now();
-  ls_s(`exam_${key}`, { header: headers, questions });
-
-  const reg = getRegistry();
-  reg[key] = { name, headers, questionCount: questions.length };
-  saveRegistry(reg);
-
-  closeAddModal();
-  buildTabs();
-  loadExam(key);
-  showToast(`<i class="fas fa-circle-check"></i> "${name}" added — ${questions.length} questions`);
 }
 
 /* ════════ REMOVE EXAM ════════ */
@@ -1368,8 +1517,6 @@ function openSettings() {
   document.getElementById('prefix-input').value   = APP_PREFIX;
   document.getElementById('prefix-display').textContent = APP_PREFIX;
   document.getElementById('app-name-input').value = APP_NAME;
-  document.getElementById('per-page-input').value = PER_PAGE;
-  document.getElementById('per-page-display').textContent = PER_PAGE;
   buildSettingsExamsList();
   document.getElementById('settings-overlay').classList.add('open');
 }
@@ -1394,17 +1541,6 @@ function savePrefix() {
   showToast('<i class="fas fa-check"></i> Prefix saved — reload to apply');
 }
 
-function savePerPage() {
-  const val = parseInt(document.getElementById('per-page-input').value, 10);
-  if (isNaN(val) || val < 5 || val > 500) { showToast('Enter a number between 5 and 500'); return; }
-  if (val === PER_PAGE) { showToast('No change'); return; }
-  PER_PAGE = val;
-  localStorage.setItem(META_PER_PAGE, val);
-  document.getElementById('per-page-display').textContent = PER_PAGE;
-  if (currentExamKey) { currentPage = 1; renderPage(1); }
-  showToast(`<i class="fas fa-check"></i> MCQ per page set to ${PER_PAGE}`);
-}
-
 function buildSettingsExamsList() {
   const el   = document.getElementById('settings-exams-list');
   const reg  = getRegistry();
@@ -1418,29 +1554,72 @@ function buildSettingsExamsList() {
     const progress = ls_g(`prog_${k}`);
     const answered = progress ? (progress.sel || []).filter(s => s !== null).length : 0;
     const favCnt   = (ls_g(`fav_${k}`) || []).length;
-    return `<div class="settings-row">
-      <div class="settings-row-label">
+    return `<div class="settings-row" style="flex-direction:column;align-items:flex-start;gap:8px;padding-bottom:12px;border-bottom:1px solid var(--b1);margin-bottom:8px">
+      <div class="settings-row-label" style="width:100%">
         <div style="display:flex;align-items:center;gap:7px">
           <i class="fas fa-book-bookmark" style="color:var(--a);font-size:.8rem"></i>
-          ${escH(meta.name)}
+          <strong>${escH(meta.name)}</strong>
         </div>
         <div class="settings-row-sub">${meta.questionCount} questions · ${answered} answered · ${favCnt} saved</div>
       </div>
-      <button class="btn btn-danger btn-sm" onclick="removeExam('${k}');buildSettingsExamsList();">
-        <i class="fas fa-trash"></i>
-      </button>
+      <div style="display:flex;gap:6px;width:100%">
+        <input class="form-input" id="exam-rename-${k}" value="${escA(meta.name)}" maxlength="80" placeholder="Exam name" style="flex:1;font-size:.8rem;height:34px;padding:0 10px">
+        <button class="btn btn-primary btn-sm" onclick="renameExam('${k}')"><i class="fas fa-pen"></i> Rename</button>
+        <button class="btn btn-danger btn-sm" onclick="removeExam('${k}');buildSettingsExamsList();"><i class="fas fa-trash"></i></button>
+      </div>
     </div>`;
   }).join('');
+}
+
+/* ════════ RENAME EXAM ════════ */
+function renameExam(key) {
+  const input = document.getElementById(`exam-rename-${key}`);
+  if (!input) return;
+  const val = input.value.trim();
+  if (!val) { showToast('Name cannot be empty'); return; }
+  const reg = getRegistry();
+  if (!reg[key]) return;
+  reg[key].name = val;
+  saveRegistry(reg);
+  // Update the stored exam header too
+  const stored = ls_g(`exam_${key}`);
+  if (stored) {
+    if (stored.header && stored.header.length > 0) stored.header[0] = val;
+    else stored.header = [val];
+    ls_s(`exam_${key}`, stored);
+  }
+  if (currentExamKey === key) {
+    data.header[0] = val;
+    buildExamHeader();
+    buildTabs();
+  } else {
+    buildTabs();
+  }
+  buildSettingsExamsList();
+  showToast(`<i class="fas fa-check"></i> Renamed to "${escH(val)}"`);
 }
 
 /* ════════ RESET ════════ */
 document.getElementById('reset-pg-btn').addEventListener('click', () => {
   if (!currentExamKey) return;
-  if (!confirm('Reset answers on this page only?')) return;
-  const s = (currentPage-1)*PER_PAGE, e = Math.min(s+PER_PAGE, data.questions.length);
-  data.questions.slice(s, e).forEach(q => q.selected = null);
-  saveProgress(); updateStats(); renderPage(currentPage);
-  showToast('<i class="fas fa-rotate-left"></i> Page reset');
+  const filtered = getFiltered();
+  const start = (currentPage - 1) * PER_PAGE;
+  const pageQs = filtered.slice(start, Math.min(start + PER_PAGE, filtered.length));
+
+  if (currentFilter === 'fav') {
+    if (!confirm(`Remove ${pageQs.length} favourite(s) on this page?`)) return;
+    let favs = getFavs();
+    const ids = new Set(pageQs.map(q => q.q_id || q.label));
+    favs = favs.filter(f => !ids.has(f));
+    saveFavs(favs);
+    updateStats(); renderPage(currentPage);
+    showToast('<i class="fas fa-heart-crack"></i> Favs on this page removed');
+  } else {
+    if (!confirm('Reset answers on this page only?')) return;
+    pageQs.forEach(q => q.selected = null);
+    saveProgress(); updateStats(); renderPage(currentPage);
+    showToast('<i class="fas fa-rotate-left"></i> Page reset');
+  }
 });
 
 function resetCurrentExam(full) {
@@ -1451,8 +1630,9 @@ function resetCurrentExam(full) {
     ls_d(`prog_${currentExamKey}`); ls_d(`fav_${currentExamKey}`);
     currentPage = 1; currentFilter = 'all';
   } else {
-    const s = (currentPage-1)*PER_PAGE, e = Math.min(s+PER_PAGE, data.questions.length);
-    data.questions.slice(s, e).forEach(q => q.selected = null);
+    const filtered = getFiltered();
+    const start = (currentPage - 1) * PER_PAGE;
+    filtered.slice(start, Math.min(start + PER_PAGE, filtered.length)).forEach(q => q.selected = null);
   }
   saveProgress(); updateStats(); renderPage(currentPage);
   closeSettings();
@@ -1473,7 +1653,6 @@ function nukeEverything() {
   // Also remove meta keys
   localStorage.removeItem(META_KEY);
   localStorage.removeItem(META_NAME);
-  localStorage.removeItem(META_PER_PAGE);
   showToast('<i class="fas fa-bomb"></i> All data wiped. Reloading...');
   setTimeout(() => location.reload(), 1200);
 }
